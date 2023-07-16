@@ -66,30 +66,23 @@ def retrieve_tasks():
     except FileNotFoundError:
         pass
 
-
-def start_stopwatch():
-    global start_time
-    start_time = time.time()
-    update_stopwatch()
-
-def pause_stopwatch():
-    global is_paused
-    is_paused = not is_paused
-
-def reset_stopwatch():
+def restart_stopwatch():
     global start_time
     start_time = time.time()
     update_stopwatch()
 
 def update_stopwatch():
-    if is_paused:
-        return
     elapsed_time = time.time() - start_time
-    hours = int(elapsed_time // 3600)
-    minutes = int((elapsed_time % 3600) // 60)
-    seconds = int(elapsed_time % 60)
-    stopwatch_label.config(text=f'{hours:02d}:{minutes:02d}:{seconds:02d}')
-    stopwatch_label.after(1000, update_stopwatch)
+    total_milliseconds = int(elapsed_time * 1000)
+    hours = total_milliseconds // (3600 * 1000)
+    remaining_milliseconds = total_milliseconds % (3600 * 1000)
+    minutes = remaining_milliseconds // (60 * 1000)
+    remaining_milliseconds %= (60 * 1000)
+    seconds = remaining_milliseconds // 1000
+    milliseconds = remaining_milliseconds % 1000
+
+    stopwatch_label.config(text=f'{hours:02d}:{minutes:02d}:{seconds:02d}:{(str(milliseconds)+"00")[:2]}')
+    stopwatch_label.after(1, update_stopwatch)
 
 
 root = tk.Tk()
@@ -130,10 +123,10 @@ clear_button.pack(side=tk.LEFT, padx=(10, 10), pady=(5, 5))
 
 
 # Create stopwatch label
-stopwatch_label = tk.Label(frame2, text='00:00:00', font=('Arial', 20))
+stopwatch_label = tk.Label(frame2, text='00:00:00:00', font=('Arial', 20))
 stopwatch_label.pack(side=tk.LEFT, padx=(10, 10), pady=(0, 5))
 
-reset_button = tk.Button(frame2, text='Restart', command=reset_stopwatch)
+reset_button = tk.Button(frame2, text='Restart', command=restart_stopwatch)
 reset_button.pack(side=tk.LEFT, padx=(10, 10), pady=(0, 5))
 
 # Retrieve tasks from the file
@@ -141,6 +134,5 @@ retrieve_tasks()
 
 # Variables for stopwatch
 start_time = 0
-is_paused = False
-
+restart_stopwatch()
 root.mainloop()
