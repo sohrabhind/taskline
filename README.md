@@ -1,2 +1,2 @@
 # checklist
-Python application for sticky task list and stopwatch
+Sticky task list and stopwatch application

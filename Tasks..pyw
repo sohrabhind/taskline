@@ -37,13 +37,11 @@ def add_task(event=None):
     else:
         messagebox.showwarning('Empty Task', 'Please enter a task.')
 
-def delete_task():
+def delete_task(event=None):
     try:
-        confirmed = messagebox.askyesno('Delete Task', 'Are you sure you want to delete this task?')
-        if confirmed:
-            index = task_list.curselection()
-            task_list.delete(index)
-            save_tasks()
+        index = task_list.curselection()
+        task_list.delete(index)
+        save_tasks()
     except:
         messagebox.showwarning('No Task Selected', 'Please select a task to delete.')
 
@@ -99,15 +97,21 @@ root.title('Sticky Task List')
 root.attributes('-topmost', True)  # Set the window to be always on top
 
 # Create the task list
-task_list = DragDropListbox(root, width=50)
+task_list = DragDropListbox(root, width=50, activestyle='none')
 task_list.pack(padx=(10, 10), pady=(5, 5))
 
+
+frame = tk.Frame(root, width=50)
+frame.pack(padx=(10, 10), pady=(5, 5))
+
 # Create an entry field for new tasks
-entry = tk.Entry(root, width=50)
-entry.pack(padx=(10, 10), pady=(5, 5))
+entry = tk.Entry(frame, width=50)
+entry.grid(row=0, column=0, ipadx = 0, ipady=7)
 
 # Bind the Enter key to the entry field
 entry.bind('<Return>', add_task)
+# Bind the Delete key to the task list
+task_list.bind('<Delete>', delete_task)
 
 frame1 = tk.Frame(root)
 frame2 = tk.Frame(root)
@@ -138,4 +142,5 @@ retrieve_tasks()
 # Variables for stopwatch
 start_time = 0
 is_paused = False
+
 root.mainloop()
