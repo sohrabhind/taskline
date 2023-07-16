@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
 import time
+import os
 
 class DragDropListbox(tk.Listbox):
     """ A Tkinter listbox with drag'n'drop reordering of entries. """
@@ -83,11 +84,14 @@ def update_stopwatch():
     milliseconds = remaining_milliseconds % 1000
 
     stopwatch_label.config(text=f'{hours:02d}:{minutes:02d}:{seconds:02d}:{(str(milliseconds)+"00")[:2]}')
-    stopwatch_label.after(1, update_stopwatch)
+    stopwatch_label.after(16, update_stopwatch)
 
 
 root = tk.Tk()
-root.title('Sticky Task List')
+icon_path = "icon.ico"
+if os.path.exists(icon_path):
+    root.iconbitmap(default=icon_path)
+root.title('Task Manager')
 root.attributes('-topmost', True)  # Set the window to be always on top
 
 # Create the task list
