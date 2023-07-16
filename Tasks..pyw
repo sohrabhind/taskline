@@ -33,6 +33,7 @@ def add_task(event=None):
     if task:
         task_list.insert(tk.END, task)
         entry.delete(0, tk.END)
+        task_list.yview_moveto(1)
         save_tasks()
     else:
         messagebox.showwarning('Empty Task', 'Please enter a task.')
