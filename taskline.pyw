@@ -87,32 +87,36 @@ def update_stopwatch():
     stopwatch_label.after(16, update_stopwatch)
 
 
-root = tk.Tk()
+window = tk.Tk()
 icon_path = "icon.ico"
 if os.path.exists(icon_path):
-    root.iconbitmap(default=icon_path)
-root.title('Task Manager')
-root.attributes('-topmost', True)  # Set the window to be always on top
+    window.iconbitmap(default=icon_path)
+window.title('Task Manager')
+window.attributes('-topmost', True)  # Set the window to be always on top
 
-# Create the task list
-task_list = DragDropListbox(root, width=50, activestyle='none')
-task_list.pack(padx=(10, 10), pady=(5, 5))
+# Create the listbox_border frame with white background
+listbox_border = tk.Frame(window, bg="white")
+listbox_border.pack(padx=(10, 10), pady=(5, 5), fill=tk.BOTH, expand=True)
 
+# Create the task_list listbox inside the listbox_border frame
+task_list = tk.Listbox(listbox_border, width=50, activestyle='none', borderwidth=0, highlightthickness=0)
+task_list.pack(padx=8, pady=8, fill=tk.BOTH, expand=True)
 
-frame = tk.Frame(root, width=50)
-frame.pack(padx=(10, 10), pady=(5, 5))
+# Create the frame frame with white background
+frame = tk.Frame(window, bg="white")
+frame.pack(padx=(10, 10), pady=(5, 5), fill=tk.X)
 
 # Create an entry field for new tasks
-entry = tk.Entry(frame, width=50)
-entry.grid(row=0, column=0, ipadx = 0, ipady=7)
+entry = tk.Entry(frame, width=50, borderwidth=0, highlightthickness=0)
+entry.pack(padx=8, pady=8, fill=tk.X)
 
 # Bind the Enter key to the entry field
 entry.bind('<Return>', add_task)
 # Bind the Delete key to the task list
 task_list.bind('<Delete>', delete_task)
 
-frame1 = tk.Frame(root)
-frame2 = tk.Frame(root)
+frame1 = tk.Frame(window)
+frame2 = tk.Frame(window)
 frame1.pack()
 frame2.pack()
 
@@ -128,7 +132,7 @@ clear_button.pack(side=tk.LEFT, padx=(10, 10), pady=(5, 5))
 
 
 # Create stopwatch label
-stopwatch_label = tk.Label(frame2, text='00:00:00:00', font=('Arial', 20))
+stopwatch_label = tk.Label(frame2, text='00:00:00:00', font=('Arial', 19))
 stopwatch_label.pack(side=tk.LEFT, padx=(10, 10), pady=(0, 5))
 
 reset_button = tk.Button(frame2, text='Restart', command=restart_stopwatch)
@@ -140,4 +144,4 @@ retrieve_tasks()
 # Variables for stopwatch
 start_time = 0
 restart_stopwatch()
-root.mainloop()
+window.mainloop()

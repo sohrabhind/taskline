@@ -1,7 +1,7 @@
 from setuptools import setup
 import py2exe
 
-main_script = 'tasks.pyw'
+main_script = 'taskline.pyw'
 icon_file = 'icon.ico'
 
 setup(
