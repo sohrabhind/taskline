@@ -99,7 +99,7 @@ listbox_border = tk.Frame(window, bg="white")
 listbox_border.pack(padx=(10, 10), pady=(5, 5), fill=tk.BOTH, expand=True)
 
 # Create the task_list listbox inside the listbox_border frame
-task_list = tk.Listbox(listbox_border, width=50, activestyle='none', borderwidth=0, highlightthickness=0)
+task_list = DragDropListbox(listbox_border, width=50, activestyle='none', borderwidth=0, highlightthickness=0)
 task_list.pack(padx=8, pady=8, fill=tk.BOTH, expand=True)
 
 # Create the frame frame with white background
