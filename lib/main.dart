@@ -87,7 +87,7 @@ class _CustomListViewState extends State<CustomListView> {
                     padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 8.0),
                     child: Text(
                       item.title,
-                      style: TextStyle(fontSize: 12),
+                      style: const TextStyle(fontSize: 12),
                     ),
                   ),
               ),
@@ -473,8 +473,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController passwordController = TextEditingController();
 
   void login() async {
-    const email = "sohrabhind@gmail.com";//emailController.text;
-    const password = "password";//passwordController.text;
+    var email = emailController.text;
+    var password = passwordController.text;
     final data = {"email": email, "password": password};
     final response = await http.post(Uri.parse(loginUrl), body: data);
 
