@@ -1,9 +1,41 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:window_manager/window_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+
+Future<void> saveLoginCredentials(String userId, String userPrivateKey) async {
+  SharedPreferences prefs = await SharedPreferences.getInstance();
+  const secureStorage = FlutterSecureStorage();
+  // Saving the username using SharedPreferences
+  await prefs.setString('user_id', userId);
+  // Saving the password using flutter_secure_storage
+  await secureStorage.write(key: 'user_private_key', value: userPrivateKey);
+}
+
+// Retrieve login credentials
+Future<String> getUserId() async {
+  SharedPreferences prefs = await SharedPreferences.getInstance();
+  return prefs.getString('user_id') ?? ''; // Returns empty string if username is not found
+}
+
+Future<String> getUserPrivateKey() async {
+  const secureStorage = FlutterSecureStorage();
+  return await secureStorage.read(key: 'user_private_key') ?? ''; // Returns empty string if password is not found
+}
+
+// Clear login credentials
+Future<void> clearLoginCredentials() async {
+  SharedPreferences prefs = await SharedPreferences.getInstance();
+  const secureStorage = FlutterSecureStorage();
+  // Remove the username using SharedPreferences
+  await prefs.remove('user_id');
+  // Remove the password using flutter_secure_storage
+  await secureStorage.delete(key: 'user_private_key');
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,7 +46,8 @@ Future<void> main() async {
 
 const String iconPath = "icon.ico";
 const String loginUrl = "https://taskline.hindbyte.com/api/authentication.php";
-const String mytasksUrl = "https://taskline.hindbyte.com/api/mytasks.php";
+const String myKeyUrl = "https://taskline.hindbyte.com/api/mykey.php";
+const String myTasksUrl = "https://taskline.hindbyte.com/api/mytasks.php";
 const String addTaskUrl = "https://taskline.hindbyte.com/api/addtask.php";
 const String taskCompletedUrl = "https://taskline.hindbyte.com/api/task-completed.php";
 const String completedTasksUrl = "https://taskline.hindbyte.com/api/completed-tasks.php";
@@ -121,9 +154,9 @@ class _CustomListViewState extends State<CustomListView> {
 
 class TaskLineScreen extends StatefulWidget {
   final String userId;
-  final String userHash;
+  final String userPrivateKey;
 
-  TaskLineScreen({required this.userId, required this.userHash});
+  TaskLineScreen({required this.userId, required this.userPrivateKey});
 
   @override
   _TaskLineScreenState createState() => _TaskLineScreenState();
@@ -143,13 +176,13 @@ class _TaskLineScreenState extends State<TaskLineScreen> {
   }
 
   Future<void> retrieveTasks() async {
-    final data = {"user_id": widget.userId, "user_hash": widget.userHash};
-    final response = await http.post(Uri.parse(mytasksUrl), body: data);
+    final data = {"user_id": widget.userId, "user_private_key": widget.userPrivateKey};
+    final response = await http.post(Uri.parse(myTasksUrl), body: data);
 
     if (response.statusCode == 200) {
       final result = json.decode(response.body);
       if (!result['error']) {
-        final tasksData = result["mytasks"];
+        final tasksData = result["my_tasks"];
         final activeTasks = tasksData
             .where((task) => int.parse(task["task_status"]) == 0)
             .toList();
@@ -180,13 +213,13 @@ class _TaskLineScreenState extends State<TaskLineScreen> {
 
   /*
   Future<void> retrieveCompletedTasks() async {
-    final data = {"user_id": widget.userId, "user_hash": widget.userHash};
+    final data = {"user_id": widget.userId, "user_private_key": widget.userPrivateKey};
     final response = await http.post(Uri.parse(completedTasksUrl), body: data);
 
     if (response.statusCode == 200) {
       final result = json.decode(response.body);
       if (!result['error']) {
-        final tasksData = result["mytasks"];
+        final tasksData = result["my_tasks"];
         final completed = tasksData
             .where((task) => int.parse(task["task_status"]) == 1)
             .toList();
@@ -229,7 +262,7 @@ class _TaskLineScreenState extends State<TaskLineScreen> {
 
     final data = {
       "user_id": widget.userId,
-      "user_hash": widget.userHash,
+      "user_private_key": widget.userPrivateKey,
       "task_title": task,
     };
 
@@ -264,7 +297,7 @@ class _TaskLineScreenState extends State<TaskLineScreen> {
   Future<void> deleteTask(int task) async {
     final data = {
       "user_id": widget.userId,
-      "user_hash": widget.userHash,
+      "user_private_key": widget.userPrivateKey,
       "task_id": task.toString(),
     };
     final response = await http.post(Uri.parse(deleteTaskUrl), body: data);
@@ -300,7 +333,7 @@ class _TaskLineScreenState extends State<TaskLineScreen> {
   Future<void> taskCompleted(int task) async {
     final data = {
       "user_id": widget.userId,
-      "user_hash": widget.userHash,
+      "user_private_key": widget.userPrivateKey,
       "task_id": task.toString(),
     };
     final response = await http.post(Uri.parse(taskCompletedUrl), body: data);
@@ -337,19 +370,22 @@ class _TaskLineScreenState extends State<TaskLineScreen> {
   Widget build(BuildContext context) {
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Task Manager")),
+      appBar: null,
       body: Column(
         children: [
           Expanded(
             child: CustomListView(items: myListItems),
           ),
-          Padding(
+          Container(
             padding: const EdgeInsets.all(8.0),
             child: TextField(
               controller: taskController,
               onSubmitted: (value) => addTask(),
+              style: TextStyle(fontSize: 14), // Optional: You can adjust the font size
               decoration: const InputDecoration(
+                contentPadding: EdgeInsets.symmetric(vertical: 16, horizontal: 8),
                 labelText: "Enter Task",
+                isDense: true,
                 border: OutlineInputBorder(),
               ),
             ),
@@ -360,7 +396,7 @@ class _TaskLineScreenState extends State<TaskLineScreen> {
               ElevatedButton(
                 onPressed: addTask,
                 style: ButtonStyle(
-                  minimumSize: MaterialStateProperty.all(const Size(150, 50)), // Set the height and width
+                  minimumSize: MaterialStateProperty.all(const Size(100, 48)), // Set the height and width
                   backgroundColor: MaterialStateProperty.all(Colors.blue), // Set button background color
                   foregroundColor: MaterialStateProperty.all(Colors.white), // Set button text color
                 ),
@@ -371,7 +407,7 @@ class _TaskLineScreenState extends State<TaskLineScreen> {
                   taskCompleted(selectedIndex); // Call the taskCompleted function here
                 },
                 style: ButtonStyle(
-                  minimumSize: MaterialStateProperty.all(Size(150, 50)), // Set the height and width
+                  minimumSize: MaterialStateProperty.all(Size(100, 48)), // Set the height and width
                   backgroundColor: MaterialStateProperty.all(Colors.blue), // Set button background color
                   foregroundColor: MaterialStateProperty.all(Colors.white), // Set button text color
                 ),
@@ -402,16 +438,16 @@ class _StopwatchWidgetState extends State<StopwatchWidget> {
   int milliseconds = 0;
 
   void startTimer() {
-    timer = Timer.periodic(const Duration(milliseconds: 30), (Timer t) {
+    timer = Timer.periodic(const Duration(milliseconds: 1000), (Timer t) {
       setState(() {
-        milliseconds += 30;
+        milliseconds += 1000;
         int hours = milliseconds ~/ (3600 * 1000);
         int remainingMilliseconds = milliseconds % (3600 * 1000);
         int minutes = remainingMilliseconds ~/ (60 * 1000);
         remainingMilliseconds %= (60 * 1000);
         int seconds = remainingMilliseconds ~/ 1000;
         int centiSeconds = (remainingMilliseconds % 1000) ~/ 10;
-        stopwatchText = '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}:${centiSeconds.toString().padLeft(2, '0')}';
+        stopwatchText = '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';//:${centiSeconds.toString().padLeft(2, '0')}';
       });
     });
   }
@@ -442,13 +478,13 @@ class _StopwatchWidgetState extends State<StopwatchWidget> {
         children: [
           Text(
             stopwatchText,
-            style: const TextStyle(fontSize: 32),
+            style: const TextStyle(fontSize: 24),
           ),
           const SizedBox(width: 16),
           ElevatedButton(
             onPressed: restartStopwatch,
             style: ButtonStyle(
-              minimumSize: MaterialStateProperty.all(const Size(100, 50)), // Set the height and width
+              minimumSize: MaterialStateProperty.all(const Size(100, 48)), // Set the height and width
               backgroundColor: MaterialStateProperty.all(Colors.blue), // Set button background color
               foregroundColor: MaterialStateProperty.all(Colors.white), // Set button text color
             ),
@@ -466,28 +502,76 @@ class LoginScreen extends StatefulWidget {
 
   @override
   _LoginScreenState createState() => _LoginScreenState();
+
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController emailController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
 
-  void login() async {
-    var email = emailController.text;
-    var password = passwordController.text;
-    final data = {"email": email, "password": password};
-    final response = await http.post(Uri.parse(loginUrl), body: data);
+  @override
+  void initState() {
+    super.initState();
+    checkSavedCredentials();
+  }
+
+  void checkSavedCredentials() async {
+    String userId = await getUserId();
+    String userPrivateKey = await getUserPrivateKey();
+    if (userId.isNotEmpty && userPrivateKey.isNotEmpty) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => TaskLineScreen(
+            userId: userId,
+            userPrivateKey: userPrivateKey,
+          ),
+        ),
+      );
+    }
+  }
+
+  void myKey() async {
+    final data = {"app": "taskline"};
+    final response = await http.post(Uri.parse(myKeyUrl), body: data);
 
     if (response.statusCode == 200) {
       final result = json.decode(response.body);
       if (!result['error']) {
-        saveToCache(result['user_id'], result['user_hash']);
+        passwordController.text = result['user_private_key'];
+      } else {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text("Error"),
+            content: Text(result['message']),
+          ),
+        );
+      }
+    } else {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text("Connection Error"),
+          content: Text("Could not connect to the server."),
+        ),
+      );
+    }
+  }
+
+  void login() async {
+    var password = passwordController.text;
+    final data = {"user_private_key": password};
+    final response = await http.post(Uri.parse(loginUrl), body: data);
+    if (response.statusCode == 200) {
+      final result = json.decode(response.body);
+      if (!result['error']) {
+        saveLoginCredentials(result['user_id'], result['user_private_key']);
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => TaskLineScreen(
               userId: result['user_id'],
-              userHash: result['user_hash'],
+              userPrivateKey: result['user_private_key'],
             ),
           ),
         );
@@ -511,29 +595,30 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void saveToCache(String userId, String userHash) {
-    final cacheData = {"user_id": userId, "user_hash": userHash};
-    // Save cacheData to cache file or shared preferences.
-  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Login")),
+      appBar: null,
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text("Email:"),
-            TextField(
-              controller: emailController,
+            ElevatedButton(
+              onPressed: myKey,
+              style: ButtonStyle(
+                minimumSize: MaterialStateProperty.all(Size(150, 50)), // Set the height and width
+                backgroundColor: MaterialStateProperty.all(Colors.blue), // Set button background color
+                foregroundColor: MaterialStateProperty.all(Colors.white), // Set button text color
+              ),
+              child: Text("Generate Key"),
             ),
             SizedBox(height: 16.0),
-            Text("Password:"),
+            Text("Key:"),
             TextField(
               controller: passwordController,
-              obscureText: true,
+              obscureText: false,
             ),
             SizedBox(height: 16.0),
             ElevatedButton(
@@ -543,7 +628,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   backgroundColor: MaterialStateProperty.all(Colors.blue), // Set button background color
                   foregroundColor: MaterialStateProperty.all(Colors.white), // Set button text color
                 ),
-              child: Text("LOGIN"),
+              child: Text("Login"),
             ),
           ],
         ),
