@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'dart:convert';
@@ -5,7 +6,6 @@ import 'package:http/http.dart' as http;
 import 'package:window_manager/window_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-
 
 Future<void> saveLoginCredentials(String userId, String userPrivateKey) async {
   SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -38,11 +38,16 @@ Future<void> clearLoginCredentials() async {
 }
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await windowManager.ensureInitialized();
-  windowManager.setAlwaysOnTop(true);
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      WidgetsFlutterBinding.ensureInitialized();
+      await WindowManager.instance.ensureInitialized();
+      WindowManager.instance.setMinimumSize(const Size(270, 300));
+      WindowManager.instance.setSize(const Size(270, 350));
+      WindowManager.instance.setAlwaysOnTop(true);
+  }
   runApp(const TaskLineApp());
 }
+
 
 const String iconPath = "icon.ico";
 const String loginUrl = "https://taskline.hindbyte.com/api/authentication.php";
@@ -86,8 +91,6 @@ class CustomListView extends StatefulWidget {
 int selectedIndex = -1;
 
 class _CustomListViewState extends State<CustomListView> {
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -133,7 +136,7 @@ class _CustomListViewState extends State<CustomListView> {
 
 
 
-  void _showUniqueNumber(ListItem item) {
+  void showUniqueNumber(ListItem item) {
     showDialog(
       context: context,
       builder: (context) {
@@ -156,7 +159,7 @@ class TaskLineScreen extends StatefulWidget {
   final String userId;
   final String userPrivateKey;
 
-  TaskLineScreen({required this.userId, required this.userPrivateKey});
+  const TaskLineScreen({super.key, required this.userId, required this.userPrivateKey});
 
   @override
   _TaskLineScreenState createState() => _TaskLineScreenState();
@@ -203,7 +206,7 @@ class _TaskLineScreenState extends State<TaskLineScreen> {
     } else {
       showDialog(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => const AlertDialog(
           title: Text("Connection Error"),
           content: Text("Could not connect to the server."),
         ),
@@ -286,7 +289,7 @@ class _TaskLineScreenState extends State<TaskLineScreen> {
     } else {
       showDialog(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => const AlertDialog(
           title: Text("Connection Error"),
           content: Text("Could not connect to the server."),
         ),
@@ -369,7 +372,8 @@ class _TaskLineScreenState extends State<TaskLineScreen> {
   @override
   Widget build(BuildContext context) {
 
-    return Scaffold(
+    return SafeArea(
+        child: Scaffold(
       appBar: null,
       body: Column(
         children: [
@@ -381,7 +385,7 @@ class _TaskLineScreenState extends State<TaskLineScreen> {
             child: TextField(
               controller: taskController,
               onSubmitted: (value) => addTask(),
-              style: TextStyle(fontSize: 14), // Optional: You can adjust the font size
+              style: const TextStyle(fontSize: 14), // Optional: You can adjust the font size
               decoration: const InputDecoration(
                 contentPadding: EdgeInsets.symmetric(vertical: 16, horizontal: 8),
                 labelText: "Enter Task",
@@ -407,7 +411,7 @@ class _TaskLineScreenState extends State<TaskLineScreen> {
                   taskCompleted(selectedIndex); // Call the taskCompleted function here
                 },
                 style: ButtonStyle(
-                  minimumSize: MaterialStateProperty.all(Size(100, 48)), // Set the height and width
+                  minimumSize: MaterialStateProperty.all(const Size(100, 48)), // Set the height and width
                   backgroundColor: MaterialStateProperty.all(Colors.blue), // Set button background color
                   foregroundColor: MaterialStateProperty.all(Colors.white), // Set button text color
                 ),
@@ -420,7 +424,7 @@ class _TaskLineScreenState extends State<TaskLineScreen> {
           const SizedBox(height: 16), // Add some padding below the buttons
         ],
       ),
-    );
+    ));
   }
 }
 
@@ -430,6 +434,7 @@ class StopwatchWidget extends StatefulWidget {
 
   @override
   _StopwatchWidgetState createState() => _StopwatchWidgetState();
+
 }
 
 class _StopwatchWidgetState extends State<StopwatchWidget> {
@@ -446,7 +451,7 @@ class _StopwatchWidgetState extends State<StopwatchWidget> {
         int minutes = remainingMilliseconds ~/ (60 * 1000);
         remainingMilliseconds %= (60 * 1000);
         int seconds = remainingMilliseconds ~/ 1000;
-        int centiSeconds = (remainingMilliseconds % 1000) ~/ 10;
+        //int centiSeconds = (remainingMilliseconds % 1000) ~/ 10;
         stopwatchText = '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';//:${centiSeconds.toString().padLeft(2, '0')}';
       });
     });
@@ -488,7 +493,7 @@ class _StopwatchWidgetState extends State<StopwatchWidget> {
               backgroundColor: MaterialStateProperty.all(Colors.blue), // Set button background color
               foregroundColor: MaterialStateProperty.all(Colors.white), // Set button text color
             ),
-            child: Text("Restart"),
+            child: const Text("Restart"),
           ),
         ],
       ),
@@ -598,7 +603,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return SafeArea (child: Scaffold(
       appBar: null,
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -608,31 +613,31 @@ class _LoginScreenState extends State<LoginScreen> {
             ElevatedButton(
               onPressed: myKey,
               style: ButtonStyle(
-                minimumSize: MaterialStateProperty.all(Size(150, 50)), // Set the height and width
+                minimumSize: MaterialStateProperty.all(const Size(150, 50)), // Set the height and width
                 backgroundColor: MaterialStateProperty.all(Colors.blue), // Set button background color
                 foregroundColor: MaterialStateProperty.all(Colors.white), // Set button text color
               ),
-              child: Text("Generate Key"),
+              child: const Text("Generate Key"),
             ),
-            SizedBox(height: 16.0),
-            Text("Key:"),
+            const SizedBox(height: 16.0),
+            const Text("Key:"),
             TextField(
               controller: passwordController,
               obscureText: false,
             ),
-            SizedBox(height: 16.0),
+            const SizedBox(height: 16.0),
             ElevatedButton(
               onPressed: login,
                 style: ButtonStyle(
-                  minimumSize: MaterialStateProperty.all(Size(150, 50)), // Set the height and width
+                  minimumSize: MaterialStateProperty.all(const Size(150, 50)), // Set the height and width
                   backgroundColor: MaterialStateProperty.all(Colors.blue), // Set button background color
                   foregroundColor: MaterialStateProperty.all(Colors.white), // Set button text color
                 ),
-              child: Text("Login"),
+              child: const Text("Login"),
             ),
           ],
         ),
       ),
-    );
+    ));
   }
 }
