@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter_acrylic/flutter_acrylic.dart';
+import 'package:flutter/services.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -43,22 +43,18 @@ Future<void> clearLoginCredentials() async {
 
 Future<void> main() async {
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      WidgetsFlutterBinding.ensureInitialized();
-     await WindowManager.instance.ensureInitialized();
-     WindowManager.instance.setMinimumSize(const Size(240, 300));
-     WindowManager.instance.setSize(const Size(240, 350));
-     WindowManager.instance.setAlwaysOnTop(true);
-     WindowManager.instance.setBackgroundColor(Colors.transparent);
-     await Window.initialize();
-     await Window.setEffect(
-         effect: WindowEffect.aero,
-         color: const Color(0xFFFFFFFF),
-     );
+    WidgetsFlutterBinding.ensureInitialized();
+    await WindowManager.instance.ensureInitialized();
+    WindowManager.instance.setMinimumSize(const Size(240, 300));
+    WindowManager.instance.setSize(const Size(240, 350));
+    WindowManager.instance.setAlwaysOnTop(true);
+    //WindowManager.instance.setBackgroundColor(Colors.transparent);
   }
 
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
   runApp(const TaskLineApp());
+
 }
 
 
@@ -70,6 +66,7 @@ const String addTaskUrl = "https://taskline.hindbyte.com/api/addtask.php";
 const String taskCompletedUrl = "https://taskline.hindbyte.com/api/task-completed.php";
 const String completedTasksUrl = "https://taskline.hindbyte.com/api/completed-tasks.php";
 const String deleteTaskUrl = "https://taskline.hindbyte.com/api/delete-task.php";
+const String taskUpdateOrderUrl = "https://taskline.hindbyte.com/api/update-tasks.php";
 
 class TaskLineApp extends StatelessWidget {
   const TaskLineApp({super.key});
@@ -86,33 +83,55 @@ class TaskLineApp extends StatelessWidget {
 
 
 class ListItem {
-  int uniqueNumber;
-  String title;
-  ListItem(this.uniqueNumber, this.title);
+  int taskId;
+  int userId;
+  String taskTitle;
+  int taskStatus;
+  int taskPriority;
+  int createdAt;
+  int updatedAt;
+  ListItem(this.taskId, this.userId, this.taskTitle, this.taskStatus, this.taskPriority, this.createdAt, this.updatedAt);
 }
 
-class CustomListView extends StatefulWidget {
 
+class CustomListView extends StatefulWidget {
   final List<ListItem> items;
   final ScrollController scrollController;
+  final Function(int oldIndex, int newIndex) onReorder;
 
-  const CustomListView({super.key, required this.items, required this.scrollController});
+  const CustomListView({
+    Key? key,
+    required this.items,
+    required this.scrollController,
+    required this.onReorder,
+  }) : super(key: key);
 
   @override
   _CustomListViewState createState() => _CustomListViewState();
-
 }
 
+
+
 int selectedIndex = -1;
+
+int getCurrentUnixTimestampInSeconds() {
+  // Get the current DateTime
+  DateTime now = DateTime.now();
+
+  // Calculate the Unix timestamp in seconds
+  int unixTimestamp = now.millisecondsSinceEpoch ~/ 1000;
+
+  return unixTimestamp;
+}
 
 class _CustomListViewState extends State<CustomListView> {
 
 
   @override
   void dispose() {
-    widget.scrollController.dispose();
     super.dispose();
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -125,28 +144,31 @@ class _CustomListViewState extends State<CustomListView> {
           final item = widget.items.removeAt(oldIndex);
           widget.items.insert(newIndex, item);
         });
+        widget.onReorder(oldIndex, newIndex); // Call the provided onReorder callback
       },
+
       children: List.generate(
         widget.items.length,
             (index) {
           final item = widget.items[index];
           return ReorderableDragStartListener(
-            key: Key(item.uniqueNumber.toString()),
+            key: Key(item.taskId.toString()),
             index: index,
             child: Container(
-              color: selectedIndex == item.uniqueNumber ? Colors.grey.withOpacity(0.6) : null,
+              color: selectedIndex == item.taskId ? const Color(0xff0259f1) : null,
               child: InkWell(
                 highlightColor: Colors.transparent,
                 onTap: () {
                   setState(() {
-                    selectedIndex = item.uniqueNumber;
+                    selectedIndex = item.taskId;
                   });
                 },
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 8.0),
                     child: Text(
-                      item.title,
-                      style: const TextStyle(fontSize: 12),
+                      item.taskTitle,
+                      style: TextStyle(fontSize: 12,
+                          color: selectedIndex == item.taskId ? const Color(0xffffffff) : null),
                     ),
                   ),
               ),
@@ -157,24 +179,6 @@ class _CustomListViewState extends State<CustomListView> {
     );
   }
 
-
-  void showUniqueNumber(ListItem item) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(item.title),
-          content: Text("Unique Number: ${item.uniqueNumber}"),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
-  }
 }
 
 class TaskLineScreen extends StatefulWidget {
@@ -185,6 +189,7 @@ class TaskLineScreen extends StatefulWidget {
 
   @override
   _TaskLineScreenState createState() => _TaskLineScreenState();
+
 }
 
 class _TaskLineScreenState extends State<TaskLineScreen> with SingleTickerProviderStateMixin {
@@ -212,51 +217,51 @@ class _TaskLineScreenState extends State<TaskLineScreen> with SingleTickerProvid
     super.dispose();
   }
 
-  void addUniqueListItem(int taskId, String title) {
-    if (!myListItems.any((item) => item.uniqueNumber == taskId)) {
-      myListItems.add(ListItem(taskId, title));
+  void addUniqueListItem(int taskId, int userId, String title, int status, int priority, int createdAt, int updatedAt) {
+    if (!myListItems.any((item) => item.taskId == taskId)) {
+      myListItems.add(ListItem(taskId, userId, title, status, priority, createdAt, updatedAt));
     }
   }
 
-  void addUniqueCompleteListItem(int taskId, String title) {
-    if (!myCompletedListItems.any((item) => item.uniqueNumber == taskId)) {
-      myCompletedListItems.add(ListItem(taskId, title));
+  void addUniqueCompleteListItem(int taskId, int userId, String title, int status, int priority, int createdAt, int updatedAt) {
+    if (!myCompletedListItems.any((item) => item.taskId == taskId)) {
+      myCompletedListItems.add(ListItem(taskId, userId, title, status, priority, createdAt, updatedAt));
     }
   }
 
   Future<void> retrieveDatabase() async {
-    List<Map<String, dynamic>> dataList = await dbHelper.getData(0);
+    List<Map<String, dynamic>> dataList = await dbHelper.getData(getUserId(), 0);
     for (var data in dataList) {
-  //    int id = data['id'];
+      //int id = data['id'];
       int taskId = data['task_id'];
-    //  int userId = data['user_id'];
+      int userId = data['user_id'];
       String title = data['title'];
-      /*int priority = data['priority'];
       int status = data['status'];
+      int priority = data['priority'];
       int createdAt = data['created_at'];
       int updatedAt = data['updated_at'];
-*/
+
       // Process the data as needed
       setState(() {
-        addUniqueListItem(taskId, title);
+        addUniqueListItem(taskId, userId, title, status, priority, createdAt, updatedAt);
       });
       //print('id: $id, task_id: $taskId, user_id: $userId, title: $title, priority: $priority, status: $status, created_at: $createdAt, updated_at: $updatedAt');
     }
 
-    List<Map<String, dynamic>> dataListCompleted = await dbHelper.getData(1);
+    List<Map<String, dynamic>> dataListCompleted = await dbHelper.getData(getUserId(), 1);
     for (var data in dataListCompleted) {
       //    int id = data['id'];
       int taskId = data['task_id'];
-      //  int userId = data['user_id'];
+      int userId = data['user_id'];
       String title = data['title'];
-      /*int priority = data['priority'];
+      int priority = data['priority'];
       int status = data['status'];
       int createdAt = data['created_at'];
       int updatedAt = data['updated_at'];
-*/
+
       // Process the data as needed
       setState(() {
-        addUniqueCompleteListItem(taskId, title);
+        addUniqueCompleteListItem(taskId, userId, title, status, priority, createdAt, updatedAt);
       });
       //print('id: $id, task_id: $taskId, user_id: $userId, title: $title, priority: $priority, status: $status, created_at: $createdAt, updated_at: $updatedAt');
     }
@@ -286,12 +291,19 @@ class _TaskLineScreenState extends State<TaskLineScreen> with SingleTickerProvid
       if (!result['error']) {
         final tasksData = result["my_tasks"];
         final activeTasks = tasksData
-            .where((task) => int.parse(task["task_status"]) == 0)
+            .where((task) => int.parse(task["status"]) == 0)
             .toList();
         setState(() {
           for (var task in activeTasks) {
-            addUniqueListItem(int.parse(task["task_id"]), task["task_name"]);
-            insertData(int.parse(task["task_id"]), int.parse(widget.userId), task["task_name"], 0, 0, 0, 0);
+            int taskId = int.parse(task['task_id']);
+            int userId = int.parse(task['user_id']);
+            String title = task['title'];
+            int status = int.parse(task['status']);
+            int priority = int.parse(task['priority']);
+            int createdAt = int.parse(task['created_at']);
+            int updatedAt = int.parse(task['updated_at']);
+            addUniqueListItem(taskId, userId, title, status, priority, createdAt, updatedAt);
+            insertData(taskId, userId, title, status, priority, createdAt, updatedAt);
           }
         });
       } else {
@@ -323,12 +335,19 @@ class _TaskLineScreenState extends State<TaskLineScreen> with SingleTickerProvid
       if (!result['error']) {
         final tasksData = result["my_tasks"];
         final activeTasks = tasksData
-            .where((task) => int.parse(task["task_status"]) == 1)
+            .where((task) => int.parse(task["status"]) == 1)
             .toList();
         setState(() {
           for (var task in activeTasks) {
-            addUniqueCompleteListItem(int.parse(task["task_id"]), task["task_name"]);
-            insertData(int.parse(task["task_id"]), int.parse(widget.userId), task["task_name"], 1, 0, 0, 0);
+            int taskId = int.parse(task['task_id']);
+            int userId = int.parse(task['user_id']);
+            String title = task['title'];
+            int status = int.parse(task['status']);
+            int priority = int.parse(task['priority']);
+            int createdAt = int.parse(task['created_at']);
+            int updatedAt = int.parse(task['updated_at']);
+            addUniqueCompleteListItem(taskId, userId, title, status, priority, createdAt, updatedAt);
+            insertData(taskId, userId, title, status, priority, createdAt, updatedAt);
           }
         });
       } else {
@@ -359,8 +378,8 @@ class _TaskLineScreenState extends State<TaskLineScreen> with SingleTickerProvid
   }
 
   Future<void> addTask() async {
-    final task = taskController.text;
-    if (task.isEmpty) {
+    final taskTitle = taskController.text;
+    if (taskTitle.isEmpty) {
       showDialog(
         context: context,
         builder: (context) => const AlertDialog(
@@ -374,7 +393,7 @@ class _TaskLineScreenState extends State<TaskLineScreen> with SingleTickerProvid
     final data = {
       "user_id": widget.userId,
       "user_private_key": widget.userPrivateKey,
-      "task_title": task,
+      "task_title": taskTitle,
     };
 
     final response = await http.post(Uri.parse(addTaskUrl), body: data);
@@ -382,10 +401,59 @@ class _TaskLineScreenState extends State<TaskLineScreen> with SingleTickerProvid
       final result = json.decode(response.body);
       if (!result['error']) {
         setState(() {
-          addUniqueListItem(int.parse(result['last_id']), task);
+          int taskId = int.parse(result['task_id']);
+          int userId = int.parse(result['user_id']);
+          String title = result['title'];
+          int status = int.parse(result['status']);
+          int priority = int.parse(result['priority']);
+          int createdAt = int.parse(result['created_at']);
+          int updatedAt = int.parse(result['updated_at']);
+          addUniqueListItem(taskId, userId, title, status, priority, createdAt, updatedAt);
           taskController.clear();
         });
         scrollToBottom(scrollController);
+      } else {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text("Login Error"),
+            content: Text(result['message']),
+          ),
+        );
+      }
+    } else {
+      showDialog(
+        context: context,
+        builder: (context) => const AlertDialog(
+          title: Text("Connection Error"),
+          content: Text("Could not connect to the server."),
+        ),
+      );
+    }
+  }
+
+  Future<void> deleteTask(int taskId, int status) async {
+    final data = {
+      "user_id": widget.userId,
+      "user_private_key": widget.userPrivateKey,
+      "task_id": taskId.toString(),
+    };
+    final response = await http.post(Uri.parse(deleteTaskUrl), body: data);
+    if (response.statusCode == 200) {
+      final result = json.decode(response.body);
+      if (!result['error']) {
+        debugPrint(result['message']);
+        setState(() {
+          if (status == 0) {
+            ListItem item = myListItems.firstWhere((item) => item.taskId == taskId);
+            insertData(taskId, item.userId, item.taskTitle, 2, item.taskPriority, item.createdAt, getCurrentUnixTimestampInSeconds());
+            myListItems.removeWhere((element) => element.taskId == taskId);
+          } else if (status == 1) {
+            ListItem item = myCompletedListItems.firstWhere((item) => item.taskId == taskId);
+            insertData(taskId, item.userId, item.taskTitle, 2, item.taskPriority, item.createdAt, getCurrentUnixTimestampInSeconds());
+            myCompletedListItems.removeWhere((element) => element.taskId == taskId);
+          }
+        });
       } else {
         showDialog(
           context: context,
@@ -406,66 +474,29 @@ class _TaskLineScreenState extends State<TaskLineScreen> with SingleTickerProvid
     }
   }
 
-  Future<void> deleteTask(int task) async {
+  Future<void> taskCompleted(int taskId) async {
     final data = {
       "user_id": widget.userId,
       "user_private_key": widget.userPrivateKey,
-      "task_id": task.toString(),
-    };
-    final response = await http.post(Uri.parse(deleteTaskUrl), body: data);
-
-    if (response.statusCode == 200) {
-      final result = json.decode(response.body);
-      if (!result['error']) {
-        setState(() {
-          setState(() {
-            myListItems.removeWhere((item) => item.uniqueNumber == task);
-          });
-        });
-      } else {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text("Login Error"),
-            content: Text(result['message']),
-          ),
-        );
-      }
-    } else {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text("Connection Error"),
-          content: Text("Could not connect to the server."),
-        ),
-      );
-    }
-  }
-
-  Future<void> taskCompleted(int task) async {
-    final data = {
-      "user_id": widget.userId,
-      "user_private_key": widget.userPrivateKey,
-      "task_id": task.toString(),
+      "task_id": taskId.toString(),
     };
     final response = await http.post(Uri.parse(taskCompletedUrl), body: data);
-
     if (response.statusCode == 200) {
       final result = json.decode(response.body);
       if (!result['error']) {
         setState(() {
           setState(() {
-            ListItem item = myListItems.firstWhere((item) => item.uniqueNumber == task);
-            addUniqueCompleteListItem(task, item.title);
-            insertData(task, int.parse(widget.userId), item.title, 1, 0, 0, 0);
-            myListItems.removeWhere((item) => item.uniqueNumber == task);
+            ListItem item = myListItems.firstWhere((item) => item.taskId == taskId);
+            addUniqueCompleteListItem(taskId, item.userId, item.taskTitle, 1, item.taskPriority, item.createdAt, getCurrentUnixTimestampInSeconds());
+            insertData(taskId, item.userId, item.taskTitle, 1, item.taskPriority, item.createdAt, getCurrentUnixTimestampInSeconds());
+            myListItems.removeWhere((item) => item.taskId == taskId);
           });
         });
       } else {
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text("Login Error"),
+            title: const Text("Login Error"),
             content: Text(result['message']),
           ),
         );
@@ -473,7 +504,7 @@ class _TaskLineScreenState extends State<TaskLineScreen> with SingleTickerProvid
     } else {
       showDialog(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => const AlertDialog(
           title: Text("Connection Error"),
           content: Text("Could not connect to the server."),
         ),
@@ -481,51 +512,119 @@ class _TaskLineScreenState extends State<TaskLineScreen> with SingleTickerProvid
     }
   }
 
+
+  Future<void> updateOrder(List<int> taskIds) async {
+    final data = {
+      "user_id": widget.userId,
+      "user_private_key": widget.userPrivateKey,
+      "task_ids": jsonEncode(taskIds),
+    };
+    final response = await http.post(Uri.parse(taskUpdateOrderUrl), body: data);
+    if (response.statusCode == 200) {
+      final result = json.decode(response.body);
+      if (!result['error']) {
+        debugPrint(result['message']);
+      } else {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text("Login Error"),
+            content: Text(result['message']),
+          ),
+        );
+      }
+    } else {
+      showDialog(
+        context: context,
+        builder: (context) => const AlertDialog(
+          title: Text("Connection Error"),
+          content: Text("Could not connect to the server."),
+        ),
+      );
+    }
+  }
 
   final ScrollController scrollController = ScrollController();
   final ScrollController scrollControllerC = ScrollController();
 
   @override
   Widget build(BuildContext context) {
-
+    FocusNode focusNode = FocusNode();
+    focusNode.requestFocus();
     return SafeArea(
         child: Scaffold(
-          backgroundColor: Colors.transparent,
+          backgroundColor: Colors.white,
           appBar: null,
-      body:
-      Column(
+      body: RawKeyboardListener(
+          focusNode: focusNode,
+          onKey: (RawKeyEvent event) {
+            if (event.runtimeType == RawKeyDownEvent && event.logicalKey == LogicalKeyboardKey.delete) {
+              if (_tabController.index == 0 || _tabController.index == 1) {
+                debugPrint("Delete");
+                deleteTask(selectedIndex, _tabController.index); // Call your deleteTask function here for the first tab
+              }
+            }
+          }, child: Column(
         children: [
-          Container(color: Colors.grey.withOpacity(0.6), // Set the desired background color here
-        child: SizedBox(
-          height: 36,
-          child: TabBar(
-              controller: _tabController,
-              tabs: const [
-              FittedBox(
-                  child: Tab(icon: Icon( // <-- Icon
-                    Icons.task_outlined,
-                  ),),),
-                FittedBox(
-                  child: Tab(icon: Icon( // <-- Icon
-                    Icons.task_rounded,
-                  ),),),
-                FittedBox(
-                  child: Tab(icon: Icon( // <-- Icon
-                    Icons.settings_rounded,
-                  ),),),
-              ],
-              indicatorWeight: 1,
+          Container(color: const Color(0xFFFFFFFF), // Set the desired background color here
+            child: SizedBox(
+              height: 36,
+              child: TabBar(
+                controller: _tabController,
+                tabs: const [
+                  FittedBox(
+                    child: Tab(icon: Icon( // <-- Icon
+                      Icons.insert_drive_file_outlined,
+                    ),),),
+                  FittedBox(
+                    child: Tab(icon: Icon( // <-- Icon
+                      Icons.task_outlined,
+                    ),),),
+                  FittedBox(
+                    child: Tab(icon: Icon( // <-- Icon
+                      Icons.settings_rounded,
+                    ),),),
+                ],
+                indicatorWeight: 1.5,
+                indicatorColor: Colors.blue,
+                labelColor: Colors.blue,
+                unselectedLabelColor: const Color(0xFF808080),
+              ),
             ),
           ),
-          ),
-            Expanded( child: TabBarView(
+          Expanded(
+            child: TabBarView(
               controller: _tabController,
               children: [
-                Center(child: CustomListView(items: myListItems, scrollController: scrollController)),
-                Center(child: CustomListView(items: myCompletedListItems, scrollController: scrollControllerC)),
+                Center(
+                  child: CustomListView(
+                    items: myListItems,
+                    scrollController: scrollController,
+                    onReorder: (oldIndex, newIndex) {
+                      // Handle reordering here if needed
+                      List<int> numberArray = [];
+                      for (int index = 0; index < myListItems.length; index++) {
+                        debugPrint('Reordered: $index');
+                        ListItem item = myListItems[index];
+                        insertData(item.taskId, item.userId, item.taskTitle, item.taskStatus, index, item.createdAt, getCurrentUnixTimestampInSeconds());
+                        numberArray.add(item.taskId);
+                      }
+                      updateOrder(numberArray);
+                    },
+                  ),
+                ),
+                Center(
+                  child: CustomListView(items: myCompletedListItems, scrollController: scrollControllerC,
+                    onReorder: (oldIndex, newIndex) {
+                      // Handle reordering here if needed
+                      debugPrint('Reordered: $oldIndex -> $newIndex');
+                    },
+                  ),
+                ),
                 const Center(child: Text('Content for Settings')),
-            ],
-          )),
+              ],
+            ),
+          ),
           Container(
             padding: const EdgeInsets.all(8.0),
             child: TextField(
@@ -534,7 +633,7 @@ class _TaskLineScreenState extends State<TaskLineScreen> with SingleTickerProvid
               style: const TextStyle(fontSize: 13), // Optional: You can adjust the font size
               decoration: const InputDecoration(
                 contentPadding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                labelText: "Enter Task",
+                labelText: "Type task and press Enter",
                 labelStyle: TextStyle(fontSize: 12),
                 isDense: true,
                 border: OutlineInputBorder(),
@@ -549,8 +648,8 @@ class _TaskLineScreenState extends State<TaskLineScreen> with SingleTickerProvid
                 style: ButtonStyle(
                   minimumSize: MaterialStateProperty.all(const Size(92, 40)), // Set the height and width
                   maximumSize: MaterialStateProperty.all(const Size(92, 40)), // Set the height and width
-                  backgroundColor: MaterialStateProperty.all(Colors.grey.withOpacity(0.6)), // Set button background color
-                  foregroundColor: MaterialStateProperty.all(Colors.white.withOpacity(0.9)), // Set button text color
+                  backgroundColor: MaterialStateProperty.all(const Color(0xFF70B3EA)), // Set button background color
+                  foregroundColor: MaterialStateProperty.all(Colors.white.withOpacity(1)), // Set button text color
                 ),
                 child: const Text("Add Task",
                     style: TextStyle(fontSize: 12)),
@@ -562,10 +661,10 @@ class _TaskLineScreenState extends State<TaskLineScreen> with SingleTickerProvid
                 style: ButtonStyle(
                   minimumSize: MaterialStateProperty.all(const Size(92, 40)), // Set the height and width
                   maximumSize: MaterialStateProperty.all(const Size(92, 40)), // Set the height and width
-                  backgroundColor: MaterialStateProperty.all(Colors.grey.withOpacity(0.6)), // Set button background color
-                  foregroundColor: MaterialStateProperty.all(Colors.white.withOpacity(0.9)), // Set button text color
+                  backgroundColor: MaterialStateProperty.all(const Color(0xFF70B3EA)), // Set button background color
+                  foregroundColor: MaterialStateProperty.all(Colors.white.withOpacity(1)), // Set button text color
                 ),
-                child: const Text("Completed",
+                child: const Text("Done",
                     style: TextStyle(fontSize: 12)),
               ),
             ],
@@ -574,6 +673,7 @@ class _TaskLineScreenState extends State<TaskLineScreen> with SingleTickerProvid
           const StopwatchWidget(),
           const SizedBox(height: 16), // Add some padding below the buttons
         ],
+      ),
       ),
     ));
   }
@@ -589,6 +689,7 @@ class StopwatchWidget extends StatefulWidget {
 }
 
 class _StopwatchWidgetState extends State<StopwatchWidget> {
+
   String stopwatchText = '00:00:00:00';
   late Timer timer;
   int milliseconds = 0;
@@ -609,6 +710,7 @@ class _StopwatchWidgetState extends State<StopwatchWidget> {
   }
 
   void restartStopwatch() {
+    timer.cancel();
     milliseconds = 0;
     startTimer();
   }
@@ -616,7 +718,7 @@ class _StopwatchWidgetState extends State<StopwatchWidget> {
   @override
   void initState() {
     super.initState();
-    restartStopwatch();
+    startTimer();
   }
 
   @override
@@ -661,12 +763,6 @@ class LoginScreen extends StatefulWidget {
 
 }
 
-enum InterfaceBrightness {
-  light,
-  dark,
-  auto,
-}
-
 
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController passwordController = TextEditingController();
@@ -675,7 +771,6 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     checkSavedCredentials();
-
   }
 
   void checkSavedCredentials() async {
@@ -703,7 +798,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!result['error']) {
         passwordController.text = result['user_private_key'];
       } else {
-        showDialog(
+        showDialog (
           context: context,
           builder: (context) => AlertDialog(
             title: Text("Error"),
@@ -712,7 +807,7 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } else {
-      showDialog(
+      showDialog (
         context: context,
         builder: (context) => AlertDialog(
           title: Text("Connection Error"),
@@ -743,7 +838,7 @@ class _LoginScreenState extends State<LoginScreen> {
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text("Login Error"),
+            title: const Text("Login Error"),
             content: Text(result['message']),
           ),
         );
@@ -751,7 +846,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } else {
       showDialog(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => const AlertDialog(
           title: Text("Connection Error"),
           content: Text("Could not connect to the server."),
         ),
@@ -759,12 +854,11 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     return SafeArea(
     child: Scaffold(
-          backgroundColor:  Colors.transparent,
+          backgroundColor:  Colors.white,
       appBar: null,
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -775,8 +869,8 @@ class _LoginScreenState extends State<LoginScreen> {
               onPressed: myKey,
               style: ButtonStyle(
                 minimumSize: MaterialStateProperty.all(const Size(150, 50)), // Set the height and width
-                backgroundColor: MaterialStateProperty.all(Colors.grey.withOpacity(0.6)), // Set button background color
-                //foregroundColor: MaterialStateProperty.all(Colors.white.withOpacity(0.6)), // Set button text color
+                backgroundColor: MaterialStateProperty.all(Colors.grey), // Set button background color
+                //foregroundColor: MaterialStateProperty.all(Colors.white), // Set button text color
               ),
               child: const Text("Generate Key"),
             ),
@@ -791,8 +885,8 @@ class _LoginScreenState extends State<LoginScreen> {
               onPressed: login,
                 style: ButtonStyle(
                   minimumSize: MaterialStateProperty.all(const Size(150, 50)), // Set the height and width
-                  backgroundColor: MaterialStateProperty.all(Colors.grey.withOpacity(0.6)), // Set button background color
-                  //foregroundColor: MaterialStateProperty.all(Colors.white.withOpacity(0.6)), // Set button text color
+                  backgroundColor: MaterialStateProperty.all(Colors.grey), // Set button background color
+                  //foregroundColor: MaterialStateProperty.all(Colors.white), // Set button text color
                 ),
               child: const Text("Login"),
             ),

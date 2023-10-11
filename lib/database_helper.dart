@@ -4,7 +4,7 @@ import 'package:path/path.dart';
 class DatabaseHelper {
 
   static Database? _database;
-  static const String _dbName = 'taskline_db.db';
+  static const String _dbName = 'taskline.db';
 
   Future<Database> get database async {
     if (_database != null) {
@@ -61,15 +61,16 @@ class DatabaseHelper {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getData(status) async {
+  Future<List<Map<String, dynamic>>> getData(userId, status) async {
     final db = await database;
+    final userIdValue = await userId; // Await the Future<String> userId to get its actual value
     final subQuery = await db.rawQuery('''
     SELECT MAX(id) as max_id
     FROM tasks
-    WHERE status = $status
+    WHERE user_id = $userIdValue AND status = $status
     GROUP BY task_id
   ''');
-    return await db.query('tasks', where: 'id IN (${subQuery.map((result) => result['max_id']).join(",")})');
+    return await db.query('tasks', where: 'id IN (${subQuery.map((result) => result['max_id']).join(",")})', orderBy: 'priority, task_id');
   }
 
 }
